@@ -1,7 +1,7 @@
 # Final project for the course "Planning in AI and Robotics"
 ### Description
 
-Asymptotically-optimal sampling-based motion planners, like RRT*, perform vast amounts of collision checking, and are hence rather slow to converge in complex problems where collision checking is relatively expensive. In our project we investigate two variants of modifications to algorithms, named Lazy-PRM* and Lazy-RRG*, that eliminate the majority of collision checks using a lazy strategy. They are samplingbased, any-time, and asymptotically complete algorithms that grow a network of feasible vertices connected by edges. Notably, collision checks for edges are deferred until a
+Asymptotically-optimal sampling-based motion planners, like RRT*, perform vast amounts of collision checking,and are hence rather slow to converge in complex problems where collision checking is relatively expensive. In our project we investigate two variants of modifications to algorithms, named Lazy-PRM* and Lazy-RRG*, that eliminate the majority of collision checks using a lazy strategy. They are sampling based, any-time,and asymptotically complete algorithms that grow a network of feasible vertices connected by edges. Notably, collision checks for edges are deferred until a
 superior path to the goal is identified. 
 
 Our goal with project is to implement Lazy-PRM* and Lazy-RRG* and test their efficiency superiority to their predecessors (PRM* and RRG** accordingly) in terms of edge checking and complexity within selected 2D Environment (analogous to ones in mentioned paper).
@@ -21,4 +21,4 @@ Our goal with project is to implement Lazy-PRM* and Lazy-RRG* and test their eff
 1. Sergey Karpukhin, [@shredder67](https://github.com/shredder67/)
 2. Maksim Osipenko, [@MOOsipenko](https://github.com/MOOsipenko)
 3. Aikun Bexultanova, [@fokrey](https://github.com/fokrey)
-4. Alisa Kalacheva
+4. Alisa Kalachevaб [@AlicePH](https://github.com/AlicePH)
