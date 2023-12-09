@@ -1,0 +1,18 @@
+out
+**/.vscode/.ropeproject/**
+**/testFiles/**/.cache/**
+*.noseids
+.nyc_output
+.vscode-test
+__pycache__
+**/.mypy_cache/**
+**/.vscode-test/**
+**/.vscode test/**
+**/.vscode-smoke/**
+**/.venv*/
+bin/**
+obj/**
+.pytest_cache
+tmp/**
+.python-version
+.vs/
