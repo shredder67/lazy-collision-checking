@@ -53,6 +53,45 @@ class State:
         
         rotated_v = np.array([rot @ translated_vertices[idx] for idx in range(4)], dtype=np.float32)
         return rotated_v + center_coors
+    
+    @staticmethod
+    def generate_lin_space(start_state: 'State', end_state: 'State', n: int):
+        dist_step = (end_state - start_state) / n
+        res = [start_state]
+        for _ in range(n):
+            res.append(res[-1] + dist_step)
+        return res
+
+    def __sub__(self, other: 'State'):
+        pos_delta = self._center_coors - other._center_coors
+        angle_delta = self._angle - other._angle
+        angle_delta = (angle_delta + np.pi) % (2 * np.pi) - np.pi
+        return State(pos_delta, angle_delta)
+    
+    def __add__(self, other: 'State'):
+        new_pos = self._center_coors + other._center_coors
+        new_angle = self._angle + other._angle
+        new_angle = (new_angle + np.pi) % (2 * np.pi) - np.pi
+        return State(new_pos, new_angle)
+    
+    def __mul__(self, scalar: float):
+        if type(scalar) is not float:
+            raise ValueError('Scalar should be float')
+        new_pos = self._center_coors * scalar
+        new_angle = self._angle * scalar
+        new_angle = (new_angle + np.pi) % (2 * np.pi) - np.pi
+        return State(new_pos, new_angle)
+    
+    def __eq__(self, other: 'State'):
+        return np.allclose(self._center_coors, other._center_coors) and \
+            np.allclose(self._angle, other._angle)
+
+
+def distance(state1: State, state2: State) -> float:
+    """Returns distance between two states"""
+    state_dif = state1 - state2
+    return np.linalg.norm(state_dif._center_coors) + \
+        np.abs(state_dif._angle)
 
 
 class Environment:
@@ -86,7 +125,7 @@ class Environment:
         return False
 
     def render(self, goal_state=None) -> None:
-        plt.figure(figsize=(10, 10))
+        plt.figure(figsize=(7, 7))
         plt.xlim(0, self._env_size[0])
         plt.ylim(0, self._env_size[1])
 
@@ -98,7 +137,7 @@ class Environment:
                 State.RECT_HEIGHT,
                 np.rad2deg(self._state._angle),
                 facecolor='red',
-                fill=True
+                fill=True,
             )
         )
 
@@ -111,7 +150,9 @@ class Environment:
                 State.RECT_HEIGHT,
                 np.rad2deg(goal_state._angle),
                 facecolor='green',
-                fill=True
+                fill=True,
+                alpha=0.3,
+                label='goal state'
             )
         )
 
@@ -120,4 +161,6 @@ class Environment:
             plt.gca().add_patch(
                 plt.Circle((o[0], o[1]), self._radiuses[idx], fill=True)
             )
+        plt.legend()
+        plt.grid()
         plt.show()

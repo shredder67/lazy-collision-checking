@@ -5,6 +5,7 @@ out
 .nyc_output
 .vscode-test
 __pycache__
+**/*.mp4
 **/.mypy_cache/**
 **/.vscode-test/**
 **/.vscode test/**
