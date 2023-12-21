@@ -41,6 +41,8 @@ class LazyRRGPlanner(Planner):
         self.G_lazy = {}
         self.costs = {}
         self.predecessors = {}
+
+        self.cur_iter = 0
         
 
     def _construct_plan(self, start_state, goal_state):
@@ -62,11 +64,14 @@ class LazyRRGPlanner(Planner):
         q_near = self._find_nearest(q_rand, self.G_lazy)
         q_delta = q_rand - q_near # think about this as vector
         
-        # ensure constraints
         q_delta._center_coors = min(self._max_move_step, q_delta._center_coors)
         q_delta._angle = min(self._max_angle_step, q_delta._angle)
 
-        # TODO: consider r(i) "r-ball strategy"
+        
+        d = 2 # config space dimension
+        r_i = (np.log(self.cur_iter) / self.cur_iter)**(1/d)
+
+        q_delta = q_delta * max(r_i/q_delta.norm(), 1)
 
         q = q_near + q_delta
         if self._env.check_collision(q): # if state is collision free
@@ -140,7 +145,8 @@ class LazyRRGPlanner(Planner):
 
 
         # TODO: consider prunning (would require to add it to every algorithm)
-        for idx in range(N):
+        for idx in range(1, N):
+            self.cur_iter = idx
             self._lazy_expand() # expands G_lazy
             self._lazy_update() # update G with cost-improving candidates from G_lazy
         return self._construct_plan(self.G, start_state, goal_state)
