@@ -54,8 +54,8 @@ class LazyRRGPlanner(Planner):
 
     def _construct_plan(self, start_state, goal_state):
         path = self._path_to(goal_state)
-        assert path[0] == start_state
-        return path # ??? seems to be correct, but need to test
+        assert path[0] == start_state and path[-1] == goal_state
+        return path
 
     def _find_nearest(self, state, G):
         mindist, argmin = np.inf, None
@@ -65,32 +65,19 @@ class LazyRRGPlanner(Planner):
                 mindist = d
                 argmin = st_cand
         return argmin
-    
-
-    def _propagate_cost_update(self, G, v):
-        visited = {}
-        queue = [v]
-        while len(queue) > 0:
-            cur = queue.pop(0)
-            if cur in visited: continue 
-            for par in G[cur]:
-                if self.costs[par] > self.costs[cur] + self._distance_fn(cur, par):
-                    self.cos[par] = self.costs[cur] + self._distance_fn(cur, par)
-                    queue.append(par) # propogate only if updated
-            
 
     def _lazy_expand(self):
         q_rand = self.env_sampler()
         q_near = self._find_nearest(q_rand, self.G_lazy)
         q_delta = q_rand - q_near # think about this as vector
         
+        # ensure steering constraints
         q_delta._center_coors = min(self._max_move_step, q_delta._center_coors)
         q_delta._angle = min(self._max_angle_step, q_delta._angle)
         
-        d = 3 # config space dimension
-        r_i = (np.log(self.cur_iter) / self.cur_iter)**(1/d)
-
-        q_delta = q_delta * max(r_i/q_delta.norm(), 1)
+        #d = 3 # config space dimension
+        #r_i = (np.log(self.cur_iter) / self.cur_iter)**(1/d)
+        #q_delta = q_delta * max(r_i/q_delta.norm(), 1)
 
         q = q_near + q_delta
         if self._env.check_collision(q): # if state is collision free
@@ -102,24 +89,46 @@ class LazyRRGPlanner(Planner):
 
             # k-nearest strategy
             tree = KDTree(self._get_config_points_from_G(self.G_lazy))
-            d, v_indices = tree.query(q.to_list())
+            _, v_neighbor_indices = tree.query(q.to_list())
 
             v_list =  list(self.G_lazy.keys())
-            for v_idx in v_indices:
+            for v_idx in v_neighbor_indices:
                 v = v_list[v_idx]
                 self.G_lazy[q].append(v)
                 self.G[v].append(q)
+
+                # cost and predecessor update
                 if self.costs[v] + self._distance_fn(v, q) < self.costs[q]:
                     self.costs[q] = self.costs[v] + self._distance_fn(v, q)
-                    self.predecessors[q] = v
-                    # TODO: propogate cost update (how lol)
-                    self._propagate_cost_update(self.G_lazy, v)
+                    self.predecessors[q][0] = v
+                    # propogate cost update FORWARD from v to q (along path)
+                    nxt = self.predecessors[q][1]
+                    while nxt is not None:
+                        cur = self.predecessors[nxt][0]
+                        if self.costs[nxt] > self.costs[cur] + self._distance_fn(cur, nxt):
+                            self.costs[nxt] = self.costs[cur] + self._distance_fn(cur, nxt)
+                            nxt = self.predecessors[nxt][1]
+                        else:
+                            break
+
+                if self.costs[q] + self._distance_fn(q, v) < self.costs[v]:
+                    self.costs[v] = self.costs[q] + self._distance_fn(q, v)
+                    self.predecessors[v][1] = q
+                    # propagate cost update BACKWARD from q to v (along path)
+                    prev = self.predecessors[v][0]
+                    while prev is not None:
+                        cur = self.predecessors[prev][1]
+                        if self.costs[prev] > self.costs[cur] + self._distance_fn(prev, cur):
+                            self.costs[prev] = self.costs[q] + self._distance_fn(prev, cur)
+                            prev = self.predecessors[prev][0]
+                        else:
+                            break
 
 
     def _path_to(self, state):
         """backtrack path through self.predecessors"""
         path = [state]
-        while self.predecessors[path[-1]] is not None:
+        while self.predecessors[path[-1]][0] is not None:
             path.append(self.predecessors[path[-1]])
         return path[::-1]
     
@@ -131,10 +140,9 @@ class LazyRRGPlanner(Planner):
         return True
 
     def _lazy_update(self, c_best, goal_state):
-        q_g = None
         all_edges_in_G = True
         while True:
-            q_g = goal_state # we only have one state
+            q_g = goal_state if self.predecessors[goal_state][0] is not None else None
             if self.costs[q_g] < c_best:
                 p = self._path_to(q_g)
                 for (u, v) in zip(p[:-1], p[1:]):
@@ -144,27 +152,31 @@ class LazyRRGPlanner(Planner):
                     else:
                         self.G_lazy[u].remove(v)
                         self.G_lazy[v].remove(u)
-                        if v in self.predecessors:
-                            # search for least cost parent
-                            min_cost = np.inf
-                            min_parent = None
-                            for parent in self.G_lazy[v]:
-                                if self.costs[parent] + self._distance_fn(parent, v) < min_cost:
-                                    min_cost = self.costs[parent] + self._distance_fn(parent, v)
-                                    min_parent = parent
-                            self.predecessors[v] = min_parent
-                            self.costs[v] = min_cost
 
-                            # need to propogate cost update for all vetices
-                            # involved into shortest path to q_g from v
-                            
+                        # search for least cost parent
+                        min_cost = np.inf
+                        min_parent = None
+                        for parent in self.G_lazy[v]:
+                            if self.costs[parent] + self._distance_fn(parent, v) < min_cost:
+                                min_cost = self.costs[parent] + self._distance_fn(parent, v)
+                                min_parent = parent
+                        self.predecessors[v][0] = min_parent
+                        self.costs[v] = min_cost
 
+                        # need to propogate cost update for all vetices
+                        # involved into shortest path to q_g from v
+                        nxt = self.predecessors[v][1]
+                        while nxt is not None:
+                            cur = self.predecessors[nxt][0]
+                            self.costs[nxt] = self.costs[cur] + self._distance_fn(cur, nxt)
+                            nxt = self.predecessors[nxt][1]
+                    
                         all_edges_in_G = False
                         break
                 if all_edges_in_G:
-                    c_best = self.costs[q_g]
+                    return self.costs[q_g]
             if q_g is None or c_best == self.costs[q_g]:
-                break
+                return c_best
                 
         
 
@@ -175,13 +187,13 @@ class LazyRRGPlanner(Planner):
         self.G_lazy[goal_state] = []
 
         self.costs[start_state] = np.inf
-        self.predecessors[start_state] = None
+        self.predecessors[start_state] = (None, None) # store both previous and next state in path
 
 
         c_best = np.inf
         for idx in range(1, N):
             self.cur_iter = idx
             self._lazy_expand() # expands G_lazy
-            self._lazy_update(c_best, goal_state) # update G with cost-improving candidates from G_lazy
+            c_best = self._lazy_update(c_best, goal_state) # update G with cost-improving candidates from G_lazy
         return self._construct_plan(self.G, start_state, goal_state)
 
