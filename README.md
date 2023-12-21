@@ -18,7 +18,7 @@ Our goal with project is to implement Lazy-PRM* and Lazy-RRG* and test their eff
 
 ### Authors
 
-1. Sergey Karpukhin, Lazy RRT*, [@shredder67](https://github.com/shredder67/)
-2. Maksim Osipenko, RRT*, [@MOOsipenko](https://github.com/MOOsipenko)
+1. Sergey Karpukhin, Lazy-RRG*, [@shredder67](https://github.com/shredder67/)
+2. Maksim Osipenko, RRG*, [@MOOsipenko](https://github.com/MOOsipenko)
 3. Aikun Bexultanova, PRM*, [@fokrey](https://github.com/fokrey)
-4. Alisa Kalacheva, Lazy PRM*, [@AlicePH](https://github.com/AlicePH)
+4. Alisa Kalacheva, Lazy-PRM*, [@AlicePH](https://github.com/AlicePH)
