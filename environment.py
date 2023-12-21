@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
 
-DEFAULT_START_ST = (np.array([10, 10]), 0) # x, y, angle
-DEFAULT_GOAL_ST = (np.array([90, 90]), -90) 
+DEFAULT_START_ST = (np.array([10, 10]), 0)  # x, y, angle
+DEFAULT_GOAL_ST = (np.array([90, 90]), -90)
 DEFAULT_CONFIG = {
     'env_size': (100, 100),
     'obst_positions': [[50, 50]],
@@ -20,8 +20,8 @@ SIMPLE_CONFIG = {
 
 
 class State:
-    RECT_WIDTH=5
-    RECT_HEIGHT=9
+    RECT_WIDTH = 5
+    RECT_HEIGHT = 9
 
     def __init__(self, pos: np.ndarray, angle: float):
         """
@@ -33,32 +33,33 @@ class State:
         """
         self._center_coors = pos
         self._angle = np.deg2rad(angle)
-        self._vertices = State._calculate_vertices_coordinates(self._center_coors, self._angle)
+        self._vertices = State._calculate_vertices_coordinates(
+            self._center_coors, self._angle)
 
     def to_list(self):
         return [self._center_coors[0],
                 self._center_coors[1],
                 self._angle]
 
-
     @staticmethod
     def _calculate_vertices_coordinates(center_coors, angle):
         """Translates state into coordinates of 4 rectangle vertices coordinates"""
         translated_vertices = np.array([
             [-State.RECT_WIDTH / 2, -State.RECT_HEIGHT / 2],
-            [-State.RECT_WIDTH  / 2, State.RECT_HEIGHT / 2],
-            [State.RECT_WIDTH  / 2, -State.RECT_HEIGHT / 2],
-            [State.RECT_WIDTH  / 2, State.RECT_HEIGHT / 2],
+            [-State.RECT_WIDTH / 2, State.RECT_HEIGHT / 2],
+            [State.RECT_WIDTH / 2, -State.RECT_HEIGHT / 2],
+            [State.RECT_WIDTH / 2, State.RECT_HEIGHT / 2],
         ], dtype=np.float32)
 
         rot = np.array([
             [np.cos(angle), -np.sin(angle)],
             [np.sin(angle), np.cos(angle)]
         ], dtype=np.float32)
-        
-        rotated_v = np.array([rot @ translated_vertices[idx] for idx in range(4)], dtype=np.float32)
+
+        rotated_v = np.array([rot @ translated_vertices[idx]
+                             for idx in range(4)], dtype=np.float32)
         return rotated_v + center_coors
-    
+
     @staticmethod
     def generate_lin_space(start_state: 'State', end_state: 'State', n: int):
         dist_step = (end_state - start_state) / n
@@ -72,13 +73,13 @@ class State:
         angle_delta = self._angle - other._angle
         angle_delta = (angle_delta + np.pi) % (2 * np.pi) - np.pi
         return State(pos_delta, angle_delta)
-    
+
     def __add__(self, other: 'State'):
         new_pos = self._center_coors + other._center_coors
         new_angle = self._angle + other._angle
         new_angle = (new_angle + np.pi) % (2 * np.pi) - np.pi
         return State(new_pos, new_angle)
-    
+
     def __mul__(self, scalar: float):
         if type(scalar) is not float:
             raise ValueError('Scalar should be float')
@@ -86,10 +87,13 @@ class State:
         new_angle = self._angle * scalar
         new_angle = (new_angle + np.pi) % (2 * np.pi) - np.pi
         return State(new_pos, new_angle)
-    
+
     def __eq__(self, other: 'State'):
         return np.allclose(self._center_coors, other._center_coors) and \
             np.allclose(self._angle, other._angle)
+
+    def __hash__(self):
+        return hash((self._center_coors.tobytes(), self._angle))
 
 
 def distance(state1: State, state2: State) -> float:
@@ -104,6 +108,7 @@ class Environment:
     Continious environment with certain amount of circle obstacles with set
     coordinates and radiuses
     """
+
     def __init__(self, state, env_size, obst_positions, obst_radi):
         self._state = state
         self._env_size = env_size
@@ -119,7 +124,7 @@ class Environment:
         return self._state
 
     @state.setter
-    def state(self, new_state:State) -> bool:
+    def state(self, new_state: State) -> bool:
         self._state = new_state
 
     def check_collision(self, state_to_check: State) -> bool:
@@ -129,7 +134,7 @@ class Environment:
                     return True
         return False
 
-    def render(self, goal_state=None) -> None:
+    def render(self, goal_state=None, path=None) -> None:
         plt.figure(figsize=(7, 7))
         plt.xlim(0, self._env_size[0])
         plt.ylim(0, self._env_size[1])
@@ -137,8 +142,8 @@ class Environment:
         # render current state
         plt.gca().add_patch(
             Rectangle(
-                self._state._vertices[0], 
-                State.RECT_WIDTH, 
+                self._state._vertices[0],
+                State.RECT_WIDTH,
                 State.RECT_HEIGHT,
                 np.rad2deg(self._state._angle),
                 facecolor='red',
@@ -149,25 +154,32 @@ class Environment:
         # additionally render goal state
         if goal_state:
             plt.gca().add_patch(
-            Rectangle(
-                goal_state._vertices[0], 
-                State.RECT_WIDTH, 
-                State.RECT_HEIGHT,
-                np.rad2deg(goal_state._angle),
-                facecolor='green',
-                fill=True,
-                alpha=0.3,
-                label='goal state'
+                Rectangle(
+                    goal_state._vertices[0],
+                    State.RECT_WIDTH,
+                    State.RECT_HEIGHT,
+                    np.rad2deg(goal_state._angle),
+                    facecolor='green',
+                    fill=True,
+                    alpha=0.3,
+                    label='goal state'
+                )
             )
-        )
-            
-        plt.scatter(self._state._center_coors[0], self._state._center_coors[0], c='orange')
+
+        plt.scatter(
+            self._state._center_coors[0], self._state._center_coors[0], c='orange')
 
         # render obstacles
         for idx, o in enumerate(self._obstacles):
             plt.gca().add_patch(
                 plt.Circle((o[0], o[1]), self._radiuses[idx], fill=True)
             )
+
+        if path:
+            for i in range(len(path) - 1):
+                plt.plot([path[i]._center_coors[0], path[i+1]._center_coors[0]],
+                         [path[i]._center_coors[1], path[i+1]._center_coors[1]],
+                         color='blue')
         plt.legend()
         plt.grid()
         plt.show()
