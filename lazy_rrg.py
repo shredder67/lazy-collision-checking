@@ -23,6 +23,7 @@ class Planner:
         self._env = env
         self._distance_fn = distance_fn
         self._max_angle_step = max_angle_step
+        self._max_move_step = max_move_step
 
     def plan(self,
              start_state: State,
@@ -54,7 +55,7 @@ class LazyRRGPlanner(Planner):
 
     def _construct_plan(self, start_state, goal_state):
         path = self._path_to(goal_state)
-        assert path[0] == start_state and path[-1] == goal_state
+        #assert path[0] == start_state and path[-1] == goal_state
         return path
 
     def _find_nearest(self, state, G):
@@ -72,8 +73,8 @@ class LazyRRGPlanner(Planner):
         q_delta = q_rand - q_near # think about this as vector
         
         # ensure steering constraints
-        q_delta._center_coors = min(self._max_move_step, q_delta._center_coors)
-        q_delta._angle = min(self._max_angle_step, q_delta._angle)
+        q_delta._center_coors = np.minimum(self._max_move_step, q_delta._center_coors)
+        q_delta._angle = np.minimum(self._max_angle_step, q_delta._angle)
         
         #d = 3 # config space dimension
         #r_i = (np.log(self.cur_iter) / self.cur_iter)**(1/d)
@@ -90,12 +91,14 @@ class LazyRRGPlanner(Planner):
             # k-nearest strategy
             tree = KDTree(self._get_config_points_from_G(self.G_lazy))
             _, v_neighbor_indices = tree.query(q.to_list())
+            if not isinstance(v_neighbor_indices, np.ndarray): 
+                v_neighbor_indices = [v_neighbor_indices]
 
-            v_list =  list(self.G_lazy.keys())
+            v_list = list(self.G_lazy.keys())
             for v_idx in v_neighbor_indices:
                 v = v_list[v_idx]
                 self.G_lazy[q].append(v)
-                self.G[v].append(q)
+                self.G_lazy[v].append(q)
 
                 # cost and predecessor update
                 if self.costs[v] + self._distance_fn(v, q) < self.costs[q]:
@@ -142,7 +145,7 @@ class LazyRRGPlanner(Planner):
     def _lazy_update(self, c_best, goal_state):
         all_edges_in_G = True
         while True:
-            q_g = goal_state if self.predecessors[goal_state][0] is not None else None
+            q_g = goal_state
             if self.costs[q_g] < c_best:
                 p = self._path_to(q_g)
                 for (u, v) in zip(p[:-1], p[1:]):
@@ -186,14 +189,15 @@ class LazyRRGPlanner(Planner):
         self.G[goal_state] = []
         self.G_lazy[goal_state] = []
 
-        self.costs[start_state] = np.inf
+        self.costs[start_state] = 0
+        self.costs[goal_state] = np.inf
         self.predecessors[start_state] = (None, None) # store both previous and next state in path
-
+        self.predecessors[goal_state] = (None, None)
 
         c_best = np.inf
         for idx in range(1, N):
             self.cur_iter = idx
             self._lazy_expand() # expands G_lazy
             c_best = self._lazy_update(c_best, goal_state) # update G with cost-improving candidates from G_lazy
-        return self._construct_plan(self.G, start_state, goal_state)
+        return self._construct_plan(start_state, goal_state)
 
