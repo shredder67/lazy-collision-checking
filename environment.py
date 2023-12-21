@@ -35,6 +35,11 @@ class State:
         self._angle = np.deg2rad(angle)
         self._vertices = State._calculate_vertices_coordinates(self._center_coors, self._angle)
 
+    def to_list(self):
+        return [self._center_coors[0],
+                self._center_coors[1],
+                self._angle]
+
 
     @staticmethod
     def _calculate_vertices_coordinates(center_coors, angle):

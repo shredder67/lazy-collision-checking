@@ -3,6 +3,7 @@ from queue import PriorityQueue
 from collections import defaultdict
 
 import numpy as np
+from scipy.spatial import KDTree
 
 from environment import State, Environment
 
@@ -33,8 +34,10 @@ class LazyRRGPlanner(Planner):
     def __init__(self, env: Environment,
                  distance_fn: Callable,
                  env_sampler: Callable,
+                 k: int,
                  max_angle_step: float=10.0,
-                 max_move_step: float=3.0):
+                 max_move_step: float=3.0,
+        ):
         super().__init__(env, distance_fn, max_angle_step, max_move_step)
         self.env_sampler = env_sampler
         self.G = {}
@@ -42,8 +45,12 @@ class LazyRRGPlanner(Planner):
         self.costs = {}
         self.predecessors = {}
 
+        self.k=k # Neighbors(R,q,i) under Algorithm 2
         self.cur_iter = 0
         
+    def _get_config_points_from_G(self,  G):
+        states = list(G.keys())
+        return [st.to_list() for st in states]
 
     def _construct_plan(self, start_state, goal_state):
         path = self._path_to(goal_state)
@@ -66,20 +73,27 @@ class LazyRRGPlanner(Planner):
         
         q_delta._center_coors = min(self._max_move_step, q_delta._center_coors)
         q_delta._angle = min(self._max_angle_step, q_delta._angle)
-
         
-        d = 2 # config space dimension
+        d = 3 # config space dimension
         r_i = (np.log(self.cur_iter) / self.cur_iter)**(1/d)
 
         q_delta = q_delta * max(r_i/q_delta.norm(), 1)
 
         q = q_near + q_delta
         if self._env.check_collision(q): # if state is collision free
-            self.G_lazy[q_near].append(q_near)
+            self.G_lazy[q_near].append(q)
+            self.G_lazy[q] = [q_near]
+
             self.costs[q] = np.inf
             self.predecessors[q] = None
-            self.G_lazy[q] = [q_near]
-            for v in self.G_lazy[q_near]: # add to all neighbors
+
+            # k-nearest strategy
+            tree = KDTree(self._get_config_points_from_G(self.G_lazy))
+            d, v_indices = tree.query(q.to_list())
+
+            v_list =  list(self.G_lazy.keys())
+            for v_idx in v_indices:
+                v = v_list[v_idx]
                 self.G_lazy[q].append(v)
                 self.G[v].append(q)
                 if self.costs[v] + self._distance_fn(v, q) < self.costs[q]:
