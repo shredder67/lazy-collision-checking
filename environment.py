@@ -45,10 +45,10 @@ class State:
     def _calculate_vertices_coordinates(center_coors, angle):
         """Translates state into coordinates of 4 rectangle vertices coordinates"""
         translated_vertices = np.array([
-            [-State.RECT_HEIGHT / 2, -State.RECT_WIDTH / 2],
-            [-State.RECT_HEIGHT / 2, State.RECT_WIDTH / 2],
-            [State.RECT_HEIGHT / 2, -State.RECT_WIDTH / 2],
-            [State.RECT_HEIGHT / 2, State.RECT_WIDTH / 2],
+            [-State.RECT_WIDTH / 2, -State.RECT_HEIGHT / 2],
+            [-State.RECT_WIDTH  / 2, State.RECT_HEIGHT / 2],
+            [State.RECT_WIDTH  / 2, -State.RECT_HEIGHT / 2],
+            [State.RECT_WIDTH  / 2, State.RECT_HEIGHT / 2],
         ], dtype=np.float32)
 
         rot = np.array([
@@ -160,6 +160,8 @@ class Environment:
                 label='goal state'
             )
         )
+            
+        plt.scatter(self._state._center_coors[0], self._state._center_coors[0], c='orange')
 
         # render obstacles
         for idx, o in enumerate(self._obstacles):
