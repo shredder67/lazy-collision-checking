@@ -22,6 +22,8 @@ class PRMStar:
         return State(np.array([x, y]), angle)
 
     def build_roadmap(self, start_state, goal_state):
+        col_checks = 0
+
         points = [self.sample_state() for _ in range(self.num_samples)] + [start_state, goal_state]
         tree = KDTree([point._center_coors for point in points])
 
@@ -31,7 +33,10 @@ class PRMStar:
                 if i != idx and dist > 0:
                     neighbor = points[idx]
                     if self.is_path_free(point, neighbor):
+                        col_checks += 11
                         self.G.add_edge(point, neighbor, weight=distance(point, neighbor))
+
+        return col_checks
 
     def is_path_free(self, state1, state2):
         num_checks = 10
@@ -56,6 +61,6 @@ class PRMStar:
         except nx.NetworkXNoPath:
             return None
 
-    def render(self, path):
-        self.environment.render(goal_state=path[-1], path=path)
+    def render(self, path, title=None):
+        self.environment.render(goal_state=path[-1], path=path, title=title)
         plt.show()             

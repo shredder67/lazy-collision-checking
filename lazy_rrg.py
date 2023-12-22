@@ -3,9 +3,48 @@ from queue import PriorityQueue
 from collections import defaultdict
 
 import numpy as np
-from scipy.spatial import KDTree
+#from scipy.spatial import KDTree
 
 from environment import State, Environment
+
+
+def construct_plan_from_a_star(parent_table, goal_state, start_state):
+        plan = []
+        cur = goal_state
+        while cur != start_state:
+            plan.append(cur)
+            cur = parent_table[cur][0]
+            plan.append(cur) # starting position
+        return plan[::-1]
+
+
+def a_star(G, start_state, goal_state):
+    p_queue = PriorityQueue()
+    visited = defaultdict(int) # 1 - visited, 0 - not visited
+    visited[start_state] = 1
+    parent_table = {start_state: (start_state, 0)} # state: (parent_state, C(state))
+    p_queue.put((0, start_state))
+    while p_queue.qsize() != 0:
+        cur_state = p_queue.get()[1]
+        if cur_state == goal_state:
+            return 'success', (
+                self._construct_plan_from_a_star(parent_table, goal_state, start_state),
+                sum(visited.values()),
+                parent_table[cur_state][1]
+            )
+
+        for st_next in G[cur_state]:
+            a_cost = self._distance_fn(cur_state, st_next)
+            next_st_cost = a_cost + parent_table[cur_state][1] # l(x, u) + C(x)
+            if visited[st_next] == 0:
+                visited[st_next] = 1
+                parent_table[st_next] = (cur_state, next_st_cost)
+                p_queue.put((next_st_cost, st_next))
+            else:
+                if parent_table[st_next][1] > next_st_cost:
+                    parent_table[st_next] = (cur_state, next_st_cost)
+
+    return "failure", (None, sum(visited.values()), -1)
 
 
 class Planner:
@@ -66,9 +105,23 @@ class LazyRRGPlanner(Planner):
                 mindist = d
                 argmin = st_cand
         return argmin
+    
+    def _find_k_nearest(self, state, G, k):
+        min_cand = PriorityQueue()
+        for st_cand in G.keys():
+            d = self._distance_fn(state, st_cand) 
+            min_cand.put((d, st_cand))
+            if min_cand.qsize() > self.k:
+                min_cand.get()
+        return [min_cand.get()[1] for _ in range(min_cand.qsize())]
 
-    def _lazy_expand(self):
+    def _lazy_expand(self, q_goal):
         q_rand = self.env_sampler()
+
+        # small chance to sample q_goal
+        if np.random.uniform() < 0.1:
+            q_rand = q_goal
+
         q_near = self._find_nearest(q_rand, self.G_lazy)
         q_delta = q_rand - q_near # think about this as vector
         
@@ -86,19 +139,14 @@ class LazyRRGPlanner(Planner):
             self.G_lazy[q] = [q_near]
 
             self.costs[q] = np.inf
-            self.predecessors[q] = None
+            self.predecessors[q] = [None, None]
 
             # k-nearest strategy
-            tree = KDTree(self._get_config_points_from_G(self.G_lazy))
-            _, v_neighbor_indices = tree.query(q.to_list())
-            if not isinstance(v_neighbor_indices, np.ndarray): 
-                v_neighbor_indices = [v_neighbor_indices]
-
-            v_list = list(self.G_lazy.keys())
-            for v_idx in v_neighbor_indices:
-                v = v_list[v_idx]
-                self.G_lazy[q].append(v)
-                self.G_lazy[v].append(q)
+            v_neighbor = self._find_k_nearest(q, self.G, self.k)
+            for v in v_neighbor:
+                if v != q_near:
+                    self.G_lazy[q].append(v)
+                    self.G_lazy[v].append(q)
 
                 # cost and predecessor update
                 if self.costs[v] + self._distance_fn(v, q) < self.costs[q]:
@@ -129,10 +177,10 @@ class LazyRRGPlanner(Planner):
 
 
     def _path_to(self, state):
-        """backtrack path through self.predecessors"""
+        """backtrack path through self.predecessors from q_start to state"""
         path = [state]
         while self.predecessors[path[-1]][0] is not None:
-            path.append(self.predecessors[path[-1]])
+            path.append(self.predecessors[path[-1]][0])
         return path[::-1]
     
     def _is_visible(self, u, v):
@@ -147,32 +195,36 @@ class LazyRRGPlanner(Planner):
         while True:
             q_g = goal_state
             if self.costs[q_g] < c_best:
+                print(1)
                 p = self._path_to(q_g)
                 for (u, v) in zip(p[:-1], p[1:]):
-                    if v not in self.G[u] and self._is_visible(u, v):
+                    if v in self.G[u]: continue
+                    if self._is_visible(u, v):
                         self.G[u].append(v)
                         self.G[v].append(u)
                     else:
                         self.G_lazy[u].remove(v)
                         self.G_lazy[v].remove(u)
 
-                        # search for least cost parent
-                        min_cost = np.inf
-                        min_parent = None
-                        for parent in self.G_lazy[v]:
-                            if self.costs[parent] + self._distance_fn(parent, v) < min_cost:
-                                min_cost = self.costs[parent] + self._distance_fn(parent, v)
-                                min_parent = parent
-                        self.predecessors[v][0] = min_parent
-                        self.costs[v] = min_cost
+                        if self.predecessors[v][0] == u:
+                            # search for least cost parent
+                            min_cost = np.inf
+                            min_parent = None
+                            for parent in self.G_lazy[v]:
+                                if self.costs[parent] + self._distance_fn(parent, v) < min_cost:
+                                    min_cost = self.costs[parent] + self._distance_fn(parent, v)
+                                    min_parent = parent
+                            self.predecessors[u][1] = None 
+                            self.predecessors[v][0] = min_parent
+                            self.costs[v] = min_cost
 
-                        # need to propogate cost update for all vetices
-                        # involved into shortest path to q_g from v
-                        nxt = self.predecessors[v][1]
-                        while nxt is not None:
-                            cur = self.predecessors[nxt][0]
-                            self.costs[nxt] = self.costs[cur] + self._distance_fn(cur, nxt)
-                            nxt = self.predecessors[nxt][1]
+                            # need to propogate cost update for all vetices
+                            # involved into shortest path to q_g from v
+                            nxt = self.predecessors[v][1]
+                            while nxt is not None:
+                                cur = self.predecessors[nxt][0]
+                                self.costs[nxt] = self.costs[cur] + self._distance_fn(cur, nxt)
+                                nxt = self.predecessors[nxt][1]
                     
                         all_edges_in_G = False
                         break
@@ -180,24 +232,48 @@ class LazyRRGPlanner(Planner):
                     return self.costs[q_g]
             if q_g is None or c_best == self.costs[q_g]:
                 return c_best
-                
+
+    def naive_update(self, c_best, start_state, goal_state):
+        all_edges_in_G = True
+        while True:
+            status, (path, cost, _) = self._a_star(self.G_lazy, start_state, goal_state)
+            if status == 'failure': break
+            if cost < c_best:
+                for (u, v) in zip(path[:-1], path[1:]):
+                    if v in self.G[u]: continue
+                    if v not in self.G[u]:
+                        self.G[u].append(v)
+                        self.G[v] = [u]
+                    else:
+                        self.G_lazy[u].remove(v)
+                        self.G_lazy[v].remove(u)
+                        all_edges_in_G = False
+                        break
+                if all_edges_in_G:
+                    c_best = cost
+                    break
+        return c_best
         
 
-    def plan(self, start_state, goal_state, N=1000):
+    def plan(self, start_state, goal_state, N=1000, naive=True):
         self.G[start_state] = []
         self.G_lazy[start_state] = []
-        self.G[goal_state] = []
         self.G_lazy[goal_state] = []
 
         self.costs[start_state] = 0
         self.costs[goal_state] = np.inf
-        self.predecessors[start_state] = (None, None) # store both previous and next state in path
-        self.predecessors[goal_state] = (None, None)
+        self.predecessors[start_state] = [None, None] # store both previous and next state in path
+        self.predecessors[goal_state] = [None, None]
 
         c_best = np.inf
         for idx in range(1, N):
             self.cur_iter = idx
-            self._lazy_expand() # expands G_lazy
-            c_best = self._lazy_update(c_best, goal_state) # update G with cost-improving candidates from G_lazy
+            self._lazy_expand(goal_state) # expands G_lazy
+            if naive:
+                c_best = self.naive_update(c_best, start_state, goal_state)
+            else:
+                # update G with cost-improving candidates from G_lazy
+                c_best = self._lazy_update(c_best, goal_state)
+            c_best = self.naive_update(c_best, start_state, goal_state)
         return self._construct_plan(start_state, goal_state)
 

@@ -9,13 +9,19 @@ DEFAULT_GOAL_ST = (np.array([90, 90]), -90)
 DEFAULT_CONFIG = {
     'env_size': (100, 100),
     'obst_positions': [[50, 50]],
-    'obst_radi': [1],
+    'obst_radi': [20],
 }
 
 SIMPLE_CONFIG = {
     'env_size': (100, 100),
     'obst_positions': [[30, 25], [30, 75], [70, 25], [70, 75]],
     'obst_radi': [15, 15, 15, 15]
+}
+
+HARD_CONFIG = {
+    'env_size': (100, 100),
+    'obst_positions': [[20, 20], [50, 20], [80, 20], [20, 50], [50, 50], [80, 80], [20, 80], [50, 80], [80, 50]],
+    'obst_radi': [8 for _ in range(9)]
 }
 
 
@@ -134,7 +140,7 @@ class Environment:
                     return True
         return False
 
-    def render(self, goal_state=None, path=None) -> None:
+    def render(self, goal_state=None, path=None, title=None) -> None:
         plt.figure(figsize=(7, 7))
         plt.xlim(0, self._env_size[0])
         plt.ylim(0, self._env_size[1])
@@ -180,6 +186,20 @@ class Environment:
                 plt.plot([path[i]._center_coors[0], path[i+1]._center_coors[0]],
                          [path[i]._center_coors[1], path[i+1]._center_coors[1]],
                          color='blue')
+                # plot a rectangle at i+1 path state
+                plt.gca().add_patch(
+                    Rectangle(
+                        path[i+1]._vertices[0],
+                        State.RECT_WIDTH,
+                        State.RECT_HEIGHT,
+                        np.rad2deg(path[i+1]._angle),
+                        facecolor='green',
+                        fill=True,
+                        alpha=0.3,
+                    )
+                )
+        if title:
+            plt.title(title)
         plt.legend()
         plt.grid()
         plt.show()
