@@ -67,7 +67,8 @@ class State:
         return rotated_v + center_coors
 
     @staticmethod
-    def generate_lin_space(start_state: 'State', end_state: 'State', n: int):
+    def generate_lin_space(start_state: 'State', end_state: 'State', n: float):
+        n = float(n)
         dist_step = (end_state - start_state) / n
         res = [start_state]
         for _ in range(n):

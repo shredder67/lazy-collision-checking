@@ -5,7 +5,7 @@ from collections import defaultdict
 import numpy as np
 #from scipy.spatial import KDTree
 
-from environment import State, Environment
+from environment import State, Environment, distance
 
 
 def construct_plan_from_a_star(parent_table, goal_state, start_state):
@@ -18,7 +18,7 @@ def construct_plan_from_a_star(parent_table, goal_state, start_state):
         return plan[::-1]
 
 
-def a_star(G, start_state, goal_state):
+def a_star(G, start_state, goal_state, distance_fn=distance):
     p_queue = PriorityQueue()
     visited = defaultdict(int) # 1 - visited, 0 - not visited
     visited[start_state] = 1
@@ -28,13 +28,13 @@ def a_star(G, start_state, goal_state):
         cur_state = p_queue.get()[1]
         if cur_state == goal_state:
             return 'success', (
-                self._construct_plan_from_a_star(parent_table, goal_state, start_state),
+                construct_plan_from_a_star(parent_table, goal_state, start_state),
                 sum(visited.values()),
                 parent_table[cur_state][1]
             )
 
         for st_next in G[cur_state]:
-            a_cost = self._distance_fn(cur_state, st_next)
+            a_cost = distance_fn(cur_state, st_next)
             next_st_cost = a_cost + parent_table[cur_state][1] # l(x, u) + C(x)
             if visited[st_next] == 0:
                 visited[st_next] = 1
@@ -84,6 +84,7 @@ class LazyRRGPlanner(Planner):
         self.G_lazy = {}
         self.costs = {}
         self.predecessors = {}
+        self.goal_milestones = []
 
         self.k=k # Neighbors(R,q,i) under Algorithm 2
         self.cur_iter = 0
@@ -137,6 +138,7 @@ class LazyRRGPlanner(Planner):
         if self._env.check_collision(q): # if state is collision free
             self.G_lazy[q_near].append(q)
             self.G_lazy[q] = [q_near]
+            self.goal_milestones.append(q)
 
             self.costs[q] = np.inf
             self.predecessors[q] = [None, None]
@@ -182,20 +184,33 @@ class LazyRRGPlanner(Planner):
         while self.predecessors[path[-1]][0] is not None:
             path.append(self.predecessors[path[-1]][0])
         return path[::-1]
+
+    def interpolate_state(self, state1, state2, t):
+        new_pos = (1 - t) * state1._center_coors + t * state2._center_coors
+        new_angle = (1 - t) * state1._angle + t * state2._angle
+        return State(new_pos, new_angle)
     
     def _is_visible(self, u, v):
-        inter_states = State.generate_lin_space(u, v, 10)
-        for st in inter_states:
-            if self._env.check_collision(st):
+        num_checks = 10
+        for i in range(num_checks + 1):
+            t = i / float(num_checks)
+            interpolated_state = self.interpolate_state(u, v, t)
+            if self._env.check_collision(interpolated_state):
                 return False
         return True
+    
 
-    def _lazy_update(self, c_best, goal_state):
+
+    def _lazy_update(self, c_best):
         all_edges_in_G = True
         while True:
-            q_g = goal_state
+            # select q_g from goal_milsetones with min cost
+            if len(self.goal_milestones) > 0:
+                q_g = self.goal_milestones[np.argmin([self.costs[q] for q in self.goal_milestones])]
+            else:
+                q_g = None
+
             if self.costs[q_g] < c_best:
-                print(1)
                 p = self._path_to(q_g)
                 for (u, v) in zip(p[:-1], p[1:]):
                     if v in self.G[u]: continue
@@ -229,14 +244,14 @@ class LazyRRGPlanner(Planner):
                         all_edges_in_G = False
                         break
                 if all_edges_in_G:
-                    return self.costs[q_g]
+                    return self.costs[q_g], q_g
             if q_g is None or c_best == self.costs[q_g]:
-                return c_best
+                return c_best, q_g
 
     def naive_update(self, c_best, start_state, goal_state):
         all_edges_in_G = True
         while True:
-            status, (path, cost, _) = self._a_star(self.G_lazy, start_state, goal_state)
+            status, (path, cost, _) = a_star(self.G_lazy, start_state, goal_state)
             if status == 'failure': break
             if cost < c_best:
                 for (u, v) in zip(path[:-1], path[1:]):
@@ -253,7 +268,8 @@ class LazyRRGPlanner(Planner):
                     c_best = cost
                     break
         return c_best
-        
+    
+    
 
     def plan(self, start_state, goal_state, N=1000, naive=True):
         self.G[start_state] = []
@@ -262,6 +278,7 @@ class LazyRRGPlanner(Planner):
 
         self.costs[start_state] = 0
         self.costs[goal_state] = np.inf
+        self.costs[None] = np.inf
         self.predecessors[start_state] = [None, None] # store both previous and next state in path
         self.predecessors[goal_state] = [None, None]
 
@@ -273,7 +290,9 @@ class LazyRRGPlanner(Planner):
                 c_best = self.naive_update(c_best, start_state, goal_state)
             else:
                 # update G with cost-improving candidates from G_lazy
-                c_best = self._lazy_update(c_best, goal_state)
+                c_best, q_g = self._lazy_update(c_best)
+                # if q_g is not None:
+                #     self.goal_milestones.remove(q_g)
             c_best = self.naive_update(c_best, start_state, goal_state)
         return self._construct_plan(start_state, goal_state)
 
